@@ -89,33 +89,38 @@ def get_text_embedding(text: str):
 
 def process_queue(progress, task):
     """process the queue"""
-    while not q.empty():
-        segment = q.get()
+    while True:
+        try:
+            segment = q.get_nowait()
+        except queue.Empty:
+            break
 
-        if "ada_v2" in segment:
+        try:
+            if "ada_v2" in segment:
+                output_segments.append(segment.copy())
+                continue
+
+            logger.debug(segment["title"])
+            text = segment["text"]
+
+            if len(tokenizer.encode(text)) > 8191:
+                continue
+
+            text = normalize_text(text)
+            segment["text"] = text
+
+            embedding = get_text_embedding(text)
+            if embedding is None:
+                output_segments.append(segment.copy())
+                continue
+
+            segment["ada_v2"] = embedding.copy()
+
             output_segments.append(segment.copy())
-            continue
-
-        logger.debug(segment["title"])
-        text = segment["text"]
-
-        if len(tokenizer.encode(text)) > 8191:
-            continue
-
-        text = normalize_text(text)
-        segment["text"] = text
-
-        embedding = get_text_embedding(text)
-        if embedding is None:
-            output_segments.append(segment.copy())
-            continue
-
-        segment["ada_v2"] = embedding.copy()
-
-        output_segments.append(segment.copy())
-        progress.update(task, advance=1)
-        q.task_done()
-        time.sleep(0.2)
+            progress.update(task, advance=1)
+            time.sleep(0.2)
+        finally:
+            q.task_done()
 
 
 logger.debug("Total segments to be processed: %s", len(segments))
